@@ -1,0 +1,719 @@
+---
+title: "R Notebook"
+output: html_notebook
+Author: Cédric EBIA
+---
+
+# Chargement des différents packages
+
+```{r}
+require(readr)
+require(FactoMineR)
+require(factoextra)
+require(BioStatR)
+require(ggplot2)
+require(tidyverse)
+require(explor)
+require(Factoshiny)
+require(MASS)
+require(tidyverse)
+require(questionr)
+require(caTools)
+require(ROCR)
+require(pROC)
+require(explor)
+require(forcats)
+```
+
+L'objectif de cette étude est avant tout d'améliorer la connaissance de l'entreprise sur les personnes qui visitent son site web de sorte à personnaliser le contenu selon l'audience.
+
+
+# 1) Importation de la table 
+
+```{r}
+init_table<-read.delim(file="bdd_profilweb.txt",header = TRUE, sep = ";")
+```
+
+
+# 2) Etude préalable des données
+
+```{r}
+summary(init_table)
+```
+
+## a) Valeurs manquantes
+
+```{r}
+#Comptage du nombre de valeurs manquantes (Aucune valeur manquante dans nos données)
+sapply(init_table, function(x) sum(is.na(x)))
+```
+
+On peut se rendre compte que nous n'avons pas de données manquantess au sein de nos données
+
+## b) Valeurs aberrantes dans nos données pour les différentes variables
+
+Tout d'abord, il convient de noter que la plupart des variables sont des variables qualitatives. De ce fait, il convient de voir si des modalités de certaines variables paraissent hors contexte (ainsi que mesurer le lien entre les différentes variables).
+
+##  La variable Nombre de connexions par mois
+
+```{r}
+#Connexion Mois
+summary(init_table$connexion_mois)
+#En essayant de réordonner les différentes modalités de cette variable
+init_table$connexion_mois <- factor(init_table$connexion_mois, levels=c("1", "2", "3", "4", "5-6", "7-10", "11-20", ">20"))
+g1_connexion<-ggplot(init_table) +
+ aes(x = connexion_mois) +
+ geom_bar(fill = "#0c4c8a") +
+ labs(y = "Nombre d'occurences", title = "Nombre de connexions  par mois") +
+ theme_minimal()
+g1_connexion
+```
+
+On peut noter que la plupart des individus se connectent une à deux fois par mois.
+On pourrait songer à recoder cette variable de sorte à avoir un nombre de classes correct (4 à 5) qui seront homogènes.
+
+  + Importance du recodage de la variable Connexion_mois
+  
+Nous avons plusieurs possibilités mais celle à privilégier demeure l'ACM qui nous permettra de regrouper les modalités pour lesquelles les individus ont des comportements globaux relativement similaires.
+
+Un regroupement de la variable connexion_mois pourrait être:
+  + 1
+  + 2
+  + 3
+  + Entre 4 et 6
+  + Entre 7 et 10
+  + Plus de 10
+  
+## La variable Source_web
+
+On peut remarquer que la plupart des individus(+ de 50%) qui viennent sur le site viennent soit via l'accès direct soit via des liens sponsorisés.
+
+Les autres canaux sont relativement très peu utilisés en comparaison aux deux premiers.
+D"un point de vue métier:
+
+  + La notoriété apparaît être comme le référencement de la marque sur Internet. (à vérifier)
+  + Le canal propriétaire pourrait être associé aux accès directs et aux Web Mail
+  + Selon le site https://fr.sendinblue.com/blog/email-marketing/, l'email Marketing apparaît comme une forme de publicité auprès de prospects afin d'inciter ces derniers à la consommation des produits consommés.
+  + Les sites affluents pourraient être considérés comme des canaux extérieurs qui permettent d'avoir accès au site web. Potentiellement (Affluents= Sites Affluents+ Sites du portail)
+  
+  + https://www.1min30.com/dictionnaire-du-web/lien-sponsorise-2 (Pour les liens sponsorisés)
+Ces derniers demeurent des liens publicitaires. De ce fait, ils pourraient être considérés comme de la publicité.
+  
+```{r}
+#Recodage des modalités de la variable
+init_table$source_web <- fct_recode(init_table$source_web,
+               "Accès Direct" = "AccÃ¨s Direct",
+               "Liens Sponsorisés" = "Liens SponsorisÃ©s",
+               "Notoriété" = "NotoriÃ©tÃ©",
+               "Publicité" = "PublicitÃ©")
+#Premières statistiques sur cette variable
+summary(init_table$source_web)
+#Graphe sur la répartition des individus selon le canal de provenance
+g1_source_web<-ggplot(init_table) +
+ aes(x = source_web) +
+ geom_bar(fill = "#0c4c8a") +
+ labs(y = "Nombre d'occurences", title = "Répartition des individus selon le canal d'accès") +
+ theme_minimal()
+g1_source_web
+summary(init_table$source_web)
+```
+
+Un exemple de recodage de la variable source web pourrait être:
+
+  + Affluents (Site portail+ Site affluents)
+  + Publicité Omnicanal (Liens sponsorisés + Publicité + Email marketing)
+  + Accès direct ou partenaires(Accès direct + Partenaires+Webmail)
+  + (Moteurs+Notoriété)==> Référencement site web et notoriété (Popularité site web)
+
+
+## La variable Typ_client
+
+```{r}
+#Quelques statistiques descriptives sur la variable typ_client
+summary(init_table$typ_client)
+g1_typ_client<-ggplot(init_table) +
+ aes(x = typ_client) +
+ geom_bar(fill = "#0c4c8a") +
+ labs(y = "Nombre d'occurences", title = "Répartition des individus selon le type de clients") +
+ theme_minimal()
+g1_typ_client
+```
+
+On peut noter que la plupart des individus qui figurent dans notre jeu de données sont des clients de type réserve-client. Les individus non clients de la marque ainsi que les souscripteurs de crédit Auto sont quasiment représnetés de façon équivalente.
+
+
+## La variable Montant crédit
+
+Tout d'abord, on peut constater que la majeure partie des individus a contracté un crédit compris entre 1000 et 6000 euros. On pourrait donc songer à consolider certaines modalités.
+
+Par exemple:
+  + Montant inconnu
+  + <= 1000e
+  + ]1000e- 3000e]  
+  + ]3000e- 6000e]
+  + ]6000e et plus
+```{r}
+summary(init_table$montant_credit)
+#En essayant de réordonner les modalités de cette variable, nous obtenons les résultats suivants:
+g1_montant_credit<-ggplot(init_table) +
+ aes(x = montant_credit) +
+ geom_bar(fill = "#0c4c8a") +
+ labs(y = "Nombre d'occurences", title = "Répartition du montant crédit au sein des individus") +
+ theme_minimal()
+g1_montant_credit
+```
+
+
+## La variable Activité
+
+On peut noter que la plupart des individus de notre population sont des individus qui ont un crédit en cours. 
+
+```{r}
+#Quelques statistiques sur les variables
+summary(init_table$activite)
+#Modalité "?" à recoder
+# init_table$activite_rec <- fct_recode(init_table$activite,
+#                "Manquant_activité" = "?")
+```
+
+## La variable Ancienneté
+
+La plupart des individus sont des individus dont l'ancienneté du crédit principal est de plus de 24 mois.
+```{r}
+#Classement des modalités dans le bon ordre
+## Réordonnancement de init_table$anciennete
+init_table$anciennete <- factor(init_table$anciennete, levels=c("?", "- de 6m", "6m-12m", "12-24m", ">24 mois"))
+#Quelques statistiques sur l'ancienneté des individus
+summary(init_table$anciennete)
+#Graphique sur la répartition des individus
+g1_anciennete<-ggplot(init_table) +
+ aes(x = anciennete) +
+ geom_bar(fill = "#0c4c8a") +
+ labs(y = "Nombre d'occurences", title = "Répartition de l'ancienneté du crédit parmi les individus") +
+ theme_minimal()
+g1_anciennete
+```
+
+Une idée de regroupement qui pourrait être pertinente serait de dresser les classes suivantes:
+  + Inconnu (Ancienneté)
+  + Moins de 12 mois
+  + Entre 12 et 24 mois
+  + >24 mois
+  
+(On se fiera à la première ACM qu'on effectuera)
+
+## La variable Utilisation Crédit
+
+Plus de la moitié des individus ont encore beaucoup à rembourser sur leurs crédits.
+
+```{r}
+## Réordonnancement de init_table$utilisation_credit
+init_table$utilisation_credit <- factor(init_table$utilisation_credit, levels=c("?", "-", "+", "++", "+++"))
+#Premières statistiques sur cette variable
+print("Statistiques sur l'utilisation du crédit")
+summary(init_table$utilisation_credit)
+```
+
+
+
+## La variable logmt
+
+Près de 50% des individus sont des locataires. Le reste des individus se répartit dans les autres classes plus bas.
+```{r}
+summary(init_table$logmt)
+```
+
+## La variable sitfam
+
+La plupart des individus sont soit célibataires, soit mariés. Il n'y a que peu de personnes qui sont séparées ou veuves.
+```{r}
+#Quelqes statistiques sur la variable sitfam
+summary(init_table$sitfam)
+```
+
+## La variable dept
+```{r}
+summary(init_table$dept)
+#On pourrait éventuellement songer à faire un regroupement par région afin de voir si nous pouvons avoir des modalités plus réduite .
+```
+
+Une première analyse pouvant être dressée à partir de ces éléments est que nous avons plus d'individus venant d'Ile de France.
+  + (Songer à regrouper les différents départements)
+  
+## La variable tr_age
+
+En premier lieu, il conviendra d'exclure l'ensemble des individus qui ont moins de 18 ans étant donné que nous sommes dans un contexte bancaire. En second lieu, les indivdus les plus utilisateurs des services proposés par nos banques ont principalement entre 36 et 55 ans.
+```{r}
+#Réordonnancement de modalités de la variable
+init_table$tr_age <- factor(init_table$tr_age, levels=c("<18 ans", "18-25 ans", "26-35 ans", "36-45 ans", "46-55 ans", "56-65 ans", "66-75 ans", ">=76 ans"))
+print("Quelques statistiques sur les différentes variables")
+summary(init_table$tr_age)
+g1_age<-ggplot(init_table) +
+ aes(x = tr_age) +
+ geom_bar(fill = "#0c4c8a") +
+ labs(y = "Nombre d'occurence", title = "Répartition des individus par tranche d'âge") +
+ theme_minimal()
+g1_age
+```
+
+Un découpage que l'on pourrait proposer:
+  + 18-25 ans (ou éventuellement 18-35 ans)
+  + 26-35 ans
+  + 36-45 ans
+  + 46-55 ans
+  + 56-65 ans
+  + 65 ans et plus
+
+
+## La variable revfyr
+```{r}
+print("Quelques statistiques sur la variable revfyr")
+summary(init_table$revfyr)
+## Recodage de init_table$revfyr en init_table$revfyr_rec
+# init_table$revfyr_rec <- fct_recode(init_table$revfyr,
+#                "< 1500 par mois" = "< 1000",
+#                "< 1500 par mois" = "1000 a 1499",
+#                "Entre 1500 a 1999 par mois" = "1500 a 1999",
+#                "Entre 2000 a 2999 par mois" = "2000 a 2999",
+#                "> 3000 par mois" = "3000 a 3999",
+#                "> 3000 par mois" = "4000 a 4999",
+#                "> 3000 par mois" = "5000 et plus")
+```
+
+Un découpage de la variable que nous pourrions proposer est le suivant:
+  + < 1500 par mois
+  + Entre 1500 et 1999 par mois
+  + Entre 2000 et 2999 par mois
+  + Plus de 3000 par mois
+  + Manquant
+  
+
+## La variable Assurance
+
+La plupart des individus ont un crédit assuré. 
+Par ailleurs, il conviendra de recoder la modalité "?" de la variable.
+
+```{r}
+print("Quelques statistiques sur l'assurance")
+summary(init_table$assurance)
+```
+
+# 3) Premier recodage de certaines modalités selon les critères arrêtés
+
+Nous commençons par une copie de la table d'origine en prenant soin de supprimer l'ensemble des individus ayant moins de 18 ans.
+
+```{r}
+#Copie de le table
+etude<-init_table[-c(25361,36259,42165),]
+etude$tr_age<-droplevels(etude$tr_age)
+```
+
+
+## a) Début du recodage
+
+### Assurance, utilisation_credit, ancienneté, montant crédit
+
+```{r}
+## Recodage de etude$assurance en etude$assurance_rec
+etude$assurance_rec <- fct_recode(etude$assurance,
+               "NR_Assurance" = "?")
+## Recodage de etude$utilisation_credit en etude$utilisation_credit_rec
+etude$utilisation_credit_rec <- fct_recode(etude$utilisation_credit,
+               "NR_utilisation" = "?")
+## Recodage de etude$anciennete en etude$anciennete_rec
+etude$anciennete_rec <- fct_recode(etude$anciennete,
+               "NR_ancienneté" = "?")
+## Recodage de etude$montant_credit en etude$montant_credit_rec
+etude$montant_credit_rec <- fct_recode(etude$montant_credit,
+               "NR_montant_credit" = "?",
+               "+ de 6000e" = "5.]6000e- 8000e]",
+               "+ de 6000e" = "6.]8000e- 12000e]",
+               "+ de 6000e" = "7.>12000e")
+```
+
+### Source web
+
+```{r}
+## Recodage de etude$source_web en etude$source_web_rec
+etude$source_web_rec <- fct_recode(etude$source_web,
+               "Accès direct ou partenaire" = "Affiliation et partenaires",
+               "Accès direct ou partenaire" = "Accès Direct",
+               "Accès direct ou partenaire" = "Webmails",
+               "Publicité Omnicanal" = "Email marketing",
+               "Publicité Omnicanal" = "Liens Sponsorisés",
+               "Publicité Omnicanal" = "Publicité",
+               "Référencement (ou popularité)" = "Moteurs",
+               "Référencement (ou popularité)" = "Notoriété",
+               "Affluents" = "Sites affluents",
+               "Affluents" = "Sites du Portail")
+```
+
+
+
+### Connexion_mois
+
+```{r}
+## Recodage de etude$connexion_mois en etude$connexion_mois_rec
+etude$connexion_mois_rec <- fct_recode(etude$connexion_mois,
+               "4-6" = "4",
+               "4-6" = "5-6",
+               "+ de 10" = "11-20",
+               "+ de 10" = ">20")
+```
+
+
+## Age
+
+```{r}
+## Recodage de etude$tr_age en etude$tr_age_rec
+etude$tr_age_rec <- fct_recode(etude$tr_age,
+               "65 ans et plus" = "66-75 ans",
+               "65 ans et plus" = ">=76 ans")
+```
+
+## Revfyr
+
+```{r}
+## Recodage de etude$revfyr en etude$revfyr_rec
+etude$revfyr_rec <- fct_recode(etude$revfyr,
+               "< 1500 par mois" = "< 1000",
+               "< 1500 par mois" = "1000 a 1499",
+               "Entre 1500 et 1999 par mois" = "1500 a 1999",
+               "Entre 2000 a 2999 par mois" = "2000 a 2999",
+               "Plus de 3000 par mois" = "3000 a 3999",
+               "Plus de 3000 par mois" = "4000 a 4999",
+               "Plus de 3000 par mois" = "5000 et plus",
+               "NR_revfyr" = "manquant")
+```
+
+
+## DEPT
+
+```{r}
+## Recodage de etude$dept en etude$region_rec
+etude$region_rec <- fct_recode(etude$dept,
+               "Grand-Est" = "Alsace",
+               "Nouvelle-Aquitaine" = "Aquitaine",
+               "Auvergne-Rhône-Alpes" = "Auvergne",
+               "Normandie" = "Basse-Normandie",
+               "Bourgogne-Franche-Comté" = "Bourgogne",
+               "Grand-Est" = "Champagne-Ardenne",
+               "Bourgogne-Franche-Comté" = "Franche-Comte",
+               "Normandie" = "Haute-Normandie",
+               "Occitanie" = "Languedoc-Roussillon",
+               "Nouvelle-Aquitaine" = "Limousin",
+               "Grand-Est" = "Lorraine",
+               "Occitanie" = "Midi-Pyrenees",
+               "Hauts de France" = "Nord-Pas-de-Calais",
+               "Hauts de France" = "Picardie",
+               "Nouvelle-Aquitaine" = "Poitou-Charentes",
+               "Auvergne-Rhône-Alpes" = "Rhône-Alpes")
+```
+
+
+La fonction nous permettant d'extraire certains numéros de colonne:
+
+```{r}
+getColumnIndexByColname <- function(df, cn) {
+  return(
+    # which(colnames(df) == cn)
+    grep(pattern = cn, x = colnames(df))
+  )
+}
+```
+
+En essayant d'obtenir certains numéros de colonnes:
+
+```{r}
+getColumnIndexByColname(etude,"log")
+```
+
+
+## Création de notre table d'analyse
+
+En gardant les variables recodées ainsi que les variables initiales intéressantes:
+
+```{r}
+final_table<-etude[,c(1,4,6,9,10,15:23)]
+```
+
+
+
+# 4) Statistiques descriptives
+
+
+```{r}
+summary(final_table)
+```
+
+
+En supprimant la colonne num_cli afin de pouvoir faire nos analyses poussées
+
+```{r}
+#Copie de la table final_table
+analyse_table<-final_table
+```
+
+En supprimant la colonne num_cli
+```{r}
+analyse_table<-analyse_table[,-c(1)]
+```
+
+## Renommage des différentes variables
+```{r}
+#A faire plus tard
+names(analyse_table)[names(analyse_table) == "anciennete_rec"] <- "anciennete"
+names(analyse_table)[names(analyse_table) == "connexion_mois_rec"] <- "connexion_mois"
+names(analyse_table)[names(analyse_table) == "region_rec"] <- "region"
+names(analyse_table)[names(analyse_table) == "assurance_rec"] <- "assurance"
+names(analyse_table)[names(analyse_table) == "montant_credit_rec"] <- "montant_credit"
+names(analyse_table)[names(analyse_table) == "tr_age_rec"] <- "tr_age"
+names(analyse_table)[names(analyse_table) == "utilisation_credit_rec"] <- "utilisation_credit"
+names(analyse_table)[names(analyse_table) == "source_web_rec"] <- "source_web"
+names(analyse_table)[names(analyse_table) == "revfyr_rec"] <- "revfyr"
+colnames(analyse_table)
+```
+
+
+
+++++++++++++++++++++++++++++++++++
+++++++++++++++++++++++++++++++++++
+
+
+## Relation entre typ_client et source web
+
+On peut voir que la plupart des individus venant sur notre site du fait du référencement externe sont des individus souscrivement principalement aux réserves d'argent. Il en est de même pour les cartes de crédit enseignes partenaires. L'image de marque qu'on communique joue effectivement en la faveur de notre établissement financier.
+
+On peut aussi voir que les individus 
+```{r}
+print("TCD entre typ_client et source_web")
+table(analyse_table$source_web,analyse_table$typ_client)
+```
+
+## Relation entre typ_client et revfyr
+
+Les individus ayant moins de 1500 par mois cimme revenus sont les principaux souscripteurs de réserves d'argent (éventuellement du fait de leur revenu faible). Par ailleursn il en est de même pour les cartes de crédit chez les enseignes partenaires.
+
+En ce qui concerne le crédit auto, on peut se rendre compte que les individus ayant entre 2000 et 2999 par mois (revfyr) ainsi que ceux ayant plus de 3000e par mois sont les principaux souscripteurs de crédit auto. 
+Il convient également de noter que la plupart des individus pas clients ou anciens clients sont des personnes qui ont moins de 1500 par mois comme revenus. Ils sont suivis de près par les individus dont on ne dispose pas d'infos sur le revenu.
+
+```{r}
+print("TCD entre revfyr et typ_client")
+table(analyse_table$revfyr, analyse_table$typ_client)
+```
+
+## Mesure du lien entre nos différentes variables
+
+En injectant le code de calcul de la matrice du V de Cramer, nous obtenons les résultats suivants:
+```{r}
+cramer_matrix = matrix(NA, nrow=ncol(analyse_table), ncol=ncol(analyse_table)) %>% as.data.frame
+ colnames(cramer_matrix) = colnames(analyse_table)
+ rownames(cramer_matrix) = colnames(analyse_table)
+ for (r in 1:nrow(cramer_matrix)){
+   for (c in 1:ncol(cramer_matrix)){
+     if (r>=c){
+       cramer_matrix[r,c] = analyse_table[, c(r,c)] %>% table %>% cramer.v
+     }
+   }
+ }
+```
+
+```{r}
+cramer_matrix
+```
+
+* On peut noter que l'activité_crédit est fortement liée à l'utilisation de ce dernier.
+
+* Bien que fortement liée au type de client ainsi qu'à l'activité, l'assurance apporte une information importante qu'on ne pourrait pas forcément déduire des autres variables. De ce fait, on pourrait la conserver. On pourrait dire la même chose du montant crédit.
+
+*
+
+
+De ce fait, voici quelques préconisations que l'on pourrait faire:
+  + Supprimer la variable utilisation_credit
+  + Supprimer la variable région
+
+
+# 5) Application de l'ACM
+
+En premier lieu, nous commençons par créer une nouvelle table dans laquelle nous supprimons les variables utilisation_credit et région.
+
+```{r}
+getColumnIndexByColname(analyse_table,"region")
+data_acm<-analyse_table[,-c(6,13)]
+```
+
+
+Selon la méthode vue en cours, nous devons réaliser notre ACM sur une population échantillon afin d'assurer la robustesse de nos résultats. L'effectif arrêté était de: n=10000. Nous allons faire un échantillon sur nos données.
+Processus détaillé:
+  * on peut considérer que la table data_acm est notre table globale.
+  * Sur cette table nous faisons une extraction de 65% des individus afin de construire notre acm ainsi que notre clustering (table acm_real)
+  * Une fois l'ensemble des classes identifiées, il convient de spliter le jeu de données (acm_real) en deux échantillons (TRAIN=0,70) et (TEST=0,30)
+  
+Mais dans notre cas, nous réaliserons l'ACM sur les 50.000 observations.
+
+```{r}
+set.seed(1234)
+#Création de deux échantillons
+spl = sample.split(data_acm, SplitRatio = 0.70)
+train = subset(data_acm, spl == TRUE)
+test  = subset(data_acm, spl == FALSE)
+```
+
+
+En essayant d'effectuer quelques statistiques sur nos deux échantillons, nous obtenons les résultats suivants:
+
+```{r}
+print("Pour l'échantillon TRAIN")
+summary(train)
+print("Pour l'échantillon TEST")
+summary(test)
+```
+
+
+
+
+
+
+```{r}
+mca_test<-MCA(data_acm, ncp=25,graph = FALSE)
+```
+
+## Analyse des résultats de l'ACM
+
+```{r}
+mca_test
+```
+
+  + Pour les valeurs propres
+  
+```{r}
+eig.val<-get_eigenvalue(mca_test)
+head(eig.val)
+```
+
+  + Graphe sur le pourcentage de variance expliquée
+  
+```{r}
+fviz_screeplot (mca_test, addlabels = TRUE, ylim = c (0, 15))
+```
+
+En essayant de jeter un oeil à la contribution des différentes variables à la construction des différents axes, nous obtenons le résultat suivant:
+
+
+
+
+```{r}
+#Visualisation intéractive des résultats de l'ACM
+explor(mca_test)
+```
+
+Nous avons 52 modalités au sein de notre jeu de données. Par ailleurs, la contribution moyenne à retenir est de 0.019 soit 1,9 (à peu près 2).
+
+
+### a) Interprétation de la première dimension DIM 1
+
+On peut noter que la première dimension permet de restituer près de 13% de l'inertie totale du jeu de données.
+
+On peut voir que les variables les plus contributives à la construction de l'axe 1 sont celles mettant en évidence l'absence d'informations sur un individu (Activité crédit, typ_client, montant_credit, assurance et ancienneté).
+
+
+```{r}
+# Contributions des variables à la dimension 1
+fviz_contrib (mca_test, choice = "var", axes = 1, top = 20,)
+```
+
+
+```{r}
+res <- explor::prepare_results(mca_test)
+disp_mca<-explor::MCA_var_plot(res, xax = 1, yax = 2, var_sup = FALSE, var_lab_min_contrib = 2,
+    col_var = "Variable", symbol_var = NULL, size_var = "Contrib", size_range = c(46.875,
+        625), labels_size = 10, point_size = 50, transitions = TRUE, labels_positions = NULL,
+    xlim = c(-1.12, 4.38), ylim = c(-1.12, 4.38))
+
+disp_mca
+```
+
+Afin de mieux visualiser les coordonnées des différents individus sur les différents axes:
+
+```{r}
+#Stockage des différentes informations liées aux variables dans la variable var
+var<-get_mca_var(mca_test)
+```
+
+Une autre façon de visualiser les résultats:
+```{r}
+fviz_mca_var(mca_test, col.var="black", shape.var = 15,
+             repel = FALSE)
+```
+
+
+Pour obtenir la table des coordonnées sur l'axe 1:
+```{r}
+table_coord_1<-mca_test$var$coord
+#head(table_coord_1)
+#Conversion en dataframe de cette table
+table_coord_1<-as.data.frame(table_coord_1)
+table_coord_1<-table_coord_1[,-c(6:25)]
+```
+
+
+
+### b) Interprétation de la deuxième dimension DIM 2
+
+On peut constater que sur l'axe 2, nous avons plusieurs variables contributrices à sa construction contrairement à l'axe 1. On pourrait notamment distinguer: (La sitfam, le revfyr, le montant_foyer, logt,typ_client).
+
+```{r}
+# Contributions des variables à la dimension 2
+fviz_contrib (mca_test, choice = "var", axes = 2, top = 20,)
+```
+
+En essayant de visualiser les coordonnées de nos différentes variables sur cette dimension:
+
+```{r}
+explor(mca_test)
+```
+
+
+
+### c) Interprétation de la dimension 3
+
+```{r}
+fviz_contrib (mca_test, choice = "var", axes = 3, top = 20,)
+```
+
+
+Une autre façon de visualiser les variables les plus importantes sur cet axe (axes 3 et 4)
+
+```{r}
+disp_mca_2<-explor::MCA_var_plot(res, xax = 3, yax = 3, var_sup = FALSE, var_lab_min_contrib = 2,
+    col_var = "Variable", symbol_var = NULL, size_var = "Contrib", size_range = c(46.875,
+        625), labels_size = 10, point_size = 50, transitions = TRUE, labels_positions = NULL,
+    xlim = c(-1.12, 4.38), ylim = c(-1.12, 4.38))
+
+disp_mca_2
+```
+
+
+
+
+
+### d) Interprétation de la dimension 4 (DIM 4)
+
+```{r}
+# Contributions des variables à la dimension 2
+fviz_contrib (mca_test, choice = "var", axes = 4, top = 20,)
+```
+
+Une autre façon de visualiser de façon intéractive les résultats de la représentation sur l'axe 4 est la suivante:
+
+```{r}
+disp_mca_3<-explor::MCA_var_plot(res, xax = 4, yax = 4, var_sup = FALSE, var_lab_min_contrib = 2,
+    col_var = "Variable", symbol_var = NULL, size_var = "Contrib", size_range = c(46.875,
+        625), labels_size = 10, point_size = 50, transitions = TRUE, labels_positions = NULL,
+    xlim = c(-1.12, 4.38), ylim = c(-1.12, 4.38))
+
+disp_mca_3
+```
+ 
+ 
