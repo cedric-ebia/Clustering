@@ -1,6 +1,8 @@
 ---
 title: "R Notebook"
-output: html_notebook
+output:
+  html_document:
+    df_print: paged
 Author: Cédric EBIA
 ---
 
@@ -14,7 +16,6 @@ require(BioStatR)
 require(ggplot2)
 require(tidyverse)
 require(explor)
-require(Factoshiny)
 require(MASS)
 require(tidyverse)
 require(questionr)
@@ -31,8 +32,15 @@ L'objectif de cette étude est avant tout d'améliorer la connaissance de l'entr
 # 1) Importation de la table 
 
 ```{r}
-init_table<-read.delim(file="bdd_profilweb.txt",header = TRUE, sep = ";")
+#init_table<-read.delim(file="bdd_profilweb.txt",header = TRUE, sep = ";", #row.names = "num_cli")
 ```
+
+
+
+```{r}
+init_table<-read.delim(file="bdd_profilweb_test.txt",header = TRUE, sep = ";",row.names = "num_cli")
+```
+
 
 
 # 2) Etude préalable des données
@@ -338,8 +346,8 @@ etude$montant_credit_rec <- fct_recode(etude$montant_credit,
 etude$source_web_rec <- fct_recode(etude$source_web,
                "Accès direct ou partenaire" = "Affiliation et partenaires",
                "Accès direct ou partenaire" = "Accès Direct",
-               "Accès direct ou partenaire" = "Webmails",
-               "Publicité Omnicanal" = "Email marketing",
+               "Accès direct ou partenaire" = "Email marketing",
+               "Publicité Omnicanal" = "Webmails",
                "Publicité Omnicanal" = "Liens Sponsorisés",
                "Publicité Omnicanal" = "Publicité",
                "Référencement (ou popularité)" = "Moteurs",
@@ -410,6 +418,14 @@ etude$region_rec <- fct_recode(etude$dept,
                "Auvergne-Rhône-Alpes" = "Rhône-Alpes")
 ```
 
+De nouvelles stats desc sur nos variables
+
+```{r}
+summary(etude)
+```
+
+
+
 
 La fonction nous permettant d'extraire certains numéros de colonne:
 
@@ -425,7 +441,7 @@ getColumnIndexByColname <- function(df, cn) {
 En essayant d'obtenir certains numéros de colonnes:
 
 ```{r}
-getColumnIndexByColname(etude,"log")
+getColumnIndexByColname(etude,"act")
 ```
 
 
@@ -434,7 +450,7 @@ getColumnIndexByColname(etude,"log")
 En gardant les variables recodées ainsi que les variables initiales intéressantes:
 
 ```{r}
-final_table<-etude[,c(1,4,6,9,10,15:23)]
+final_table<-etude[,c(3,5,8,9,14:22)]
 ```
 
 
@@ -456,7 +472,7 @@ analyse_table<-final_table
 
 En supprimant la colonne num_cli
 ```{r}
-analyse_table<-analyse_table[,-c(1)]
+#analyse_table<-analyse_table[,-c(1)]
 ```
 
 ## Renommage des différentes variables
@@ -530,17 +546,17 @@ cramer_matrix
 
 
 De ce fait, voici quelques préconisations que l'on pourrait faire:
-  + Supprimer la variable utilisation_credit
+  + Supprimer la variable activité
   + Supprimer la variable région
 
 
 # 5) Application de l'ACM
 
-En premier lieu, nous commençons par créer une nouvelle table dans laquelle nous supprimons les variables utilisation_credit et région.
+En premier lieu, nous commençons par créer une nouvelle table dans laquelle nous supprimons les variables activité et région.
 
 ```{r}
-getColumnIndexByColname(analyse_table,"region")
-data_acm<-analyse_table[,-c(6,13)]
+getColumnIndexByColname(analyse_table,"reg")
+data_acm<-analyse_table[,-c(2,13)]
 ```
 
 
@@ -555,7 +571,7 @@ Mais dans notre cas, nous réaliserons l'ACM sur les 50.000 observations.
 ```{r}
 set.seed(1234)
 #Création de deux échantillons
-spl = sample.split(data_acm, SplitRatio = 0.70)
+spl = sample.split(data_acm, SplitRatio = 0.50)
 train = subset(data_acm, spl == TRUE)
 test  = subset(data_acm, spl == FALSE)
 ```
@@ -576,7 +592,7 @@ summary(test)
 
 
 ```{r}
-mca_test<-MCA(data_acm, ncp=25,graph = FALSE)
+mca_test<-MCA(train, ncp=15,graph = FALSE)
 ```
 
 ## Analyse des résultats de l'ACM
@@ -605,7 +621,7 @@ En essayant de jeter un oeil à la contribution des différentes variables à la
 
 ```{r}
 #Visualisation intéractive des résultats de l'ACM
-explor(mca_test)
+#explor(mca_test)
 ```
 
 Nous avons 52 modalités au sein de notre jeu de données. Par ailleurs, la contribution moyenne à retenir est de 0.019 soit 1,9 (à peu près 2).
@@ -638,7 +654,7 @@ Afin de mieux visualiser les coordonnées des différents individus sur les diff
 
 ```{r}
 #Stockage des différentes informations liées aux variables dans la variable var
-var<-get_mca_var(mca_test)
+#var<-get_mca_var(mca_test)
 ```
 
 Une autre façon de visualiser les résultats:
@@ -650,11 +666,11 @@ fviz_mca_var(mca_test, col.var="black", shape.var = 15,
 
 Pour obtenir la table des coordonnées sur l'axe 1:
 ```{r}
-table_coord_1<-mca_test$var$coord
+#table_coord_1<-mca_test$var$coord
 #head(table_coord_1)
 #Conversion en dataframe de cette table
-table_coord_1<-as.data.frame(table_coord_1)
-table_coord_1<-table_coord_1[,-c(6:25)]
+#table_coord_1<-as.data.frame(table_coord_1)
+#table_coord_1<-table_coord_1[,-c(6:25)]
 ```
 
 
@@ -671,22 +687,12 @@ fviz_contrib (mca_test, choice = "var", axes = 2, top = 20,)
 En essayant de visualiser les coordonnées de nos différentes variables sur cette dimension:
 
 ```{r}
-explor(mca_test)
+# explor(mca_test)
 ```
-
-
-
-### c) Interprétation de la dimension 3
+Une autre façon de visualiser les résultats sur la deuxième dimension serait la suivante:
 
 ```{r}
-fviz_contrib (mca_test, choice = "var", axes = 3, top = 20,)
-```
-
-
-Une autre façon de visualiser les variables les plus importantes sur cet axe (axes 3 et 4)
-
-```{r}
-disp_mca_2<-explor::MCA_var_plot(res, xax = 3, yax = 3, var_sup = FALSE, var_lab_min_contrib = 2,
+disp_mca_2<-explor::MCA_var_plot(res, xax = 2, yax = 2, var_sup = FALSE, var_lab_min_contrib = 2,
     col_var = "Variable", symbol_var = NULL, size_var = "Contrib", size_range = c(46.875,
         625), labels_size = 10, point_size = 50, transitions = TRUE, labels_positions = NULL,
     xlim = c(-1.12, 4.38), ylim = c(-1.12, 4.38))
@@ -694,6 +700,28 @@ disp_mca_2<-explor::MCA_var_plot(res, xax = 3, yax = 3, var_sup = FALSE, var_lab
 disp_mca_2
 ```
 
+On peut tout d'abord noter que les individus en accession pro sont relativement proches des individus propriétaires.
+
+### c) Interprétation de la dimension 3
+
+```{r}
+fviz_contrib (mca_test, choice = "var", axes = 3, top = 20,)
+```
+Sur cet axe, nous avons un grand nombre de modalités(variables contributrices). De ce fait, une interprétation visuelle s'impose. 
+
+Une autre façon de visualiser les variables les plus importantes sur cet axe (axe 3 uniquement)
+
+```{r}
+disp_mca_3<-explor::MCA_var_plot(res, xax = 3, yax = 3, var_sup = FALSE, var_lab_min_contrib = 2,
+    col_var = "Variable", symbol_var = NULL, size_var = "Contrib", size_range = c(46.875,
+        625), labels_size = 10, point_size = 50, transitions = TRUE, labels_positions = NULL,
+    xlim = c(-1.12, 4.38), ylim = c(-1.12, 4.38))
+
+disp_mca_3
+```
+
+Cet axe reste relativement difficile à interpréter dans la mesure où: 
+  + On a d'une part des individus inactif, qui souscrivent à une carte enseigne partenaire et qui viennent via le canal Affluents.
 
 
 
@@ -701,19 +729,256 @@ disp_mca_2
 ### d) Interprétation de la dimension 4 (DIM 4)
 
 ```{r}
-# Contributions des variables à la dimension 2
+# Contributions des variables à la dimension 4
 fviz_contrib (mca_test, choice = "var", axes = 4, top = 20,)
 ```
 
 Une autre façon de visualiser de façon intéractive les résultats de la représentation sur l'axe 4 est la suivante:
 
 ```{r}
-disp_mca_3<-explor::MCA_var_plot(res, xax = 4, yax = 4, var_sup = FALSE, var_lab_min_contrib = 2,
+disp_mca_4<-explor::MCA_var_plot(res, xax = 4, yax = 4, var_sup = FALSE, var_lab_min_contrib = 2,
     col_var = "Variable", symbol_var = NULL, size_var = "Contrib", size_range = c(46.875,
         625), labels_size = 10, point_size = 50, transitions = TRUE, labels_positions = NULL,
     xlim = c(-1.12, 4.38), ylim = c(-1.12, 4.38))
 
-disp_mca_3
+disp_mca_4
 ```
  
  
+ 
+ 
+# 6) Réalisation de la classification
+ 
+Nous passerons par une K-Means. En essayat de conserver les coordonnées des individus dans les différentes dimensions, nous obtenons les résultats suivants:
+
+```{r}
+#Récupération des coordonnées dans les dimensions des différents individus
+coord_data<-mca_test$ind$coord
+#Création du dataframe
+data_coord<-as.data.frame(coord_data)
+```
+
+En créant le dataframe qui nous servira pour la classification, nous obtenons les résultats suivants:
+
+```{r}
+#Subset en ne récupérant que les dimensions 1 à 13
+data_coord2<-data_coord[,c(1:13)]
+```
+
+Construisons la matrice des distances afin d'effectuer la classification ascendante hierarchique
+
+```{r}
+dist_mat<-dist(data_coord2,method = "euclidean")
+```
+
+
+```{r}
+#Les différentes méthodes à comparer
+# critere <- c( "single", "average", "complete", "ward")
+# par(mfrow=c(1,1))
+# for (i in 1:4)
+#Création d'une première méthode de Ward pour la classification
+plot(hclust(dist_mat, method = "ward"), hang=-1)
+```
+
+
+Nous allons retenir le critère de Ward afin d'appliquer notre classification.
+
+```{r}
+#Création d'une variable dans laquelle stocker le critère de Ward
+final_cah<-hclust(dist_mat, method = "ward")
+cpt<-cutree(final_cah,k=4)
+#Nombre d'individus dans chaque classe
+table(cpt)
+```
+
+De ce fait, nous obtenons:
+
+```{r}
+plot(final_cah,cex=0.6)
+rect.hclust(final_cah,k=4, border=2:5)
+```
+
+
+
+```{r}
+#Ajout de la variable correspondante à chaque cluster
+nv_train<-train %>% mutate(cluster=cpt)
+```
+
+
+# 7) Réalisation du modèle d'affectation des différents clients aux classes
+
+Les analyses des différentes classes se feront à partir de la table nv_train dans laquelle l'ensemble de nos prédictions sont stockées.
+
+```{r}
+#Analyse descriptive
+#Convertissons en factor la nouvelle variable obtenue
+nv_train$cluster<-as.factor(nv_train$cluster)
+```
+
+Nous pouvons obtenir les résultats suivants:
+```{r}
+#write.csv2(nv_train, file="analyse_excel.csv")
+```
+
+
+
+
+# 8) Construction du modèle de régression logistique
+
+Essayons de construire un échantillon d'apprentissage et un échantillon test sur nos données.
+
+```{r}
+set.seed(4321)
+sp=sample.split(nv_train,SplitRatio = 0.70)
+mod_train<-subset(nv_train, sp==TRUE)
+mod_test<-subset(nv_train, sp==FALSE)
+```
+
+
+Vérifions le contenu des différentes tables
+
+```{r}
+print("Pour la variable mod_train")
+summary(mod_train)
+print("Pour la variable mod_train")
+summary(mod_test)
+```
+
+
+
+## a) Construction du modèle sur échantillon d'apprentissage
+
+
+```{r}
+require(nnet)
+```
+
+
+En essayant de considérer comme classe de référence la classe 4 ("Celle des individus sur lesquels nous n'avons pas d'informations)
+
+
+```{r}
+mod_train$cluster<-relevel(mod_train$cluster,"4")
+```
+
+En appliquant le modèle, nous obtenons les résultats suivants:
+
+
+```{r}
+log1<-multinom(cluster~., data=mod_train, )
+```
+
+En analysant les résultats de cette classification, nous obtenons les résultats suivants:
+
+
+```{r}
+#summary(log1)
+```
+
+Ou en essayant le modèle stepwise:
+
+```{r}
+log2<-step(log1)
+```
+
+Exemple d'interprétation:
+
+Par rapport à la situation de référence (classe des inconnus), le fait d'avoir 
+un contrat 
+```{r}
+summary(log2)
+```
+
+# 
+```{r}
+#require(broom)
+re_table<-tidy(log2,exponentiate=TRUE, conf.int=TRUE)
+```
+
+Etant donné que la librairie broom donne une explication peu lisible, essayons d'obtenir une interprétation plus claire des différents coefficients
+
+```{r}
+#Chargement du package
+#require(stargazer)
+```
+
+
+
+```{r}
+#stargazer(log2, type="html", out="resultat_regression.htm")
+```
+
+
+```{r}
+cramer_matrix2 = matrix(NA, nrow=ncol(nv_train), ncol=ncol(nv_train)) %>% as.data.frame
+ colnames(cramer_matrix2) = colnames(nv_train)
+ rownames(cramer_matrix2) = colnames(nv_train)
+ for (r in 1:nrow(cramer_matrix2)){
+   for (c in 1:ncol(cramer_matrix2)){
+     if (r>=c){
+       cramer_matrix2[r,c] = nv_train[, c(r,c)] %>% table %>% cramer.v
+     }
+   }
+ }
+ 
+cramer_matrix2
+```
+
+
+
+A première vue, aucun de nos coefficients n'est significatif.
+
+En essayant d'évaluer la précision du modèle, nous obtenons les résultats suivants:
+
+
+## b) Précision sur l'échantillon d'apprentissage
+
+```{r}
+prob_log2<-predict(log2, mod_train, type="class")
+conf_mtx2<-prob_log2 %>% table(mod_train$cluster)
+print("Matrice de Confusion apprentissage")
+conf_mtx2
+print("Précision du modèle sur l'échantillon d'apprentissage")
+accuracy_train<-sum(diag(conf_mtx2))/15151
+accuracy_train
+```
+
+Nous avons une précision de de 90% sur nos données.
+
+## c) Consolidation sur l'échantillon test
+
+```{r}
+#Modalité de référence dans l'échantillon test
+mod_test$cluster<-relevel(mod_test$cluster,"4")
+```
+
+En essayant de préciser  la robustesse du modèle sur l'échantillon test, nous obtenons les résultats suivants:
+```{r}
+prob_test_log2<-predict(log2, mod_test, type="class")
+conf_mtx3<-prob_test_log2 %>% table(mod_test$cluster)
+print("Matrice de Confusion test")
+conf_mtx3
+accuracy_test<-sum(diag(conf_mtx3))/7575
+print("Précision du modèle sur l'échantillon test")
+accuracy_test
+```
+
+On peut se rendre compte que la précision du modèle reste relativement stable. Celle-ci étant de 90%, on peut donc supposer une robustesse du modèle (Malgré une non significativité de la plupart des variables).
+
+En appliquant le modèle sur notre échantillon global, nous obtenons les résultats suivants:
+
+```{r}
+#data_acm2<-data_acm
+#data_acm2$cluster_pred<-predict(log2, data_acm2, type="class")
+```
+
+
+
+En exportant la table finale pour nos analyses globales, nous obtenons le résultat final:
+
+```{r}
+write.csv2(x=analyse_table, file = "table_origine_propre.csv")
+```
+
